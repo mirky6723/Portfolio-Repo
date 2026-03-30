@@ -1,0 +1,176 @@
+---
+title: "Student Dashboard"
+subtitle: "Data Insights from Supabase"
+author: "Miranda Insights LLC"
+date: "'March 30th, 2026'"
+format: 
+  html:
+    self-contained: true
+    toc: true
+    toc-location: left
+    number-sections: true
+    theme: cosmo
+execute:
+  echo: true
+  warning: false
+  error: true
+jupyter: python3
+---
+
+```{python, include=FALSE, echo=FALSE}
+# ─── IMPORT REQUIRED PACKAGES ──────────────────────────────
+import pandas as pd
+import numpy as np
+import plotly.express as px
+import plotly.graph_objects as go
+
+# Load your main.py data
+from main import students_df, attendance_df, assessments_df, schools_df
+
+print("✅ Data Loaded from Supabase")
+print(f"Students: {students_df.shape}, Attendance: {attendance_df.shape}, Assessments: {assessments_df.shape}, Schools: {schools_df.shape}")
+```
+
+-   [Overview](#overview)
+-   [Student Distribution](#student-distribution)
+-   [Attendance Analysis](#attendance-analysis)
+-   [Assessment Analysis](#assessment-analysis)
+-   [School Comparison](#school-comparison)
+-   [Interactive Box Plots](#interactive-box-plots)
+-   [Correlation Analysis](#correlation-analysis)
+
+## Overview {#overview}
+
+```{python}
+#| label: Quick summary of student data
+# Summary of student data
+students_summary = students_df.describe(include='all').transpose()
+display(students_summary)
+
+# Unique counts
+print(f"Unique Schools: {students_df['school_id'].nunique()}")
+print(f"Total Students: {len(students_df)}")
+print(f"Grades: {students_df['grade_level'].unique()}")
+```
+
+## Student Distribution {#student-distribution}
+```{python}
+#| label: Student distribution by grade
+# Student count by grade and gender
+grade_counts = students_df.groupby('grade_level').size().reset_index(name='count')
+fig_grade = px.bar(
+    grade_counts,
+    x='grade_level',
+    y='count',
+    title="Student Distribution by Grade",
+    labels={'count':'Number of Students', 'grade_level':'Grade'},
+    text='count'
+)
+fig_grade.show()
+
+```
+
+## Attendance Analysis {#attendance-analysis}
+```{python}
+#| label: Attendance analysis by grade
+# Merge students with attendance data
+attendance_merged = attendance_df.merge(students_df, on='student_id', how='left')
+attendance_merged['absent_flag'] = attendance_merged['status'].apply(lambda x: 1 if x.lower()=='absent' else 0)
+attendance_merged['tardy_flag'] = attendance_merged['status'].apply(lambda x: 1 if x.lower()=='tardy' else 0)
+
+attendance_summary = attendance_merged.groupby(['grade_level','school_id']).agg(
+    total_absent=('absent_flag','sum'),
+    total_tardy=('tardy_flag','sum'),
+    total_days=('status','count')
+).reset_index()
+attendance_summary = attendance_summary.merge(schools_df, on='school_id', how='left')
+
+fig_attendance = go.Figure()
+for school in attendance_summary['school_name'].unique():
+    df_school = attendance_summary[attendance_summary['school_name']==school]
+    fig_attendance.add_trace(go.Bar(x=df_school['grade_level'], y=df_school['total_absent'], name=f'{school} Absent'))
+    fig_attendance.add_trace(go.Bar(x=df_school['grade_level'], y=df_school['total_tardy'], name=f'{school} Tardy'))
+
+fig_attendance.update_layout(
+    title="Attendance Summary by Grade & School",
+    barmode='group', xaxis_title='Grade', yaxis_title='Days'
+)
+fig_attendance.show()
+
+```
+
+
+## Assessment Analysis {#assessment-analysis}
+```{python}
+#| label: Assessment analysis by grade and subject
+# Merge assessments + students
+assessment_merged = assessments_df.merge(students_df, on='student_id', how='left')
+
+# Average scores by grade and subject
+assessment_summary = assessment_merged.groupby(['grade_level','subject'])['score'].mean().reset_index()
+
+fig_scores = px.bar(
+    assessment_summary,
+    x='grade_level',
+    y='score',
+    color='subject',∏
+    barmode='group',
+    title="Average Assessment Scores by Grade and Subject",
+    labels={'grade_level':'Grade', 'score':'Average Score'}
+)
+fig_scores.show()
+```
+
+## School Comparison {#school-comparison}
+```{python}
+#| label: Average assessment scores by school
+# Merge assessments with school info
+school_summary = assessment_merged.groupby('school_name')['score'].mean().reset_index()
+fig_school = px.bar(
+    school_summary,
+    x='school_name',
+    y='score',
+    title="Average Assessment Score by School",
+    labels={'score':'Average Score', 'school_name':'School'}
+)
+fig_school.update_layout(xaxis_tickangle=-45)
+fig_school.show()
+```
+
+## Interactive Box Plots {#interactive-box-plots}
+```{python}
+for col_split in ['ell_status', 'special_ed_flag']:
+    fig_box = px.box(
+        assessment_merged,
+        x='grade_level',
+        y='score',
+        color='score',
+        color_continuous_scale='RdYlGn',
+        facet_col='school_name',
+        points='all',
+        hover_data=['student_id','subject',col_split],
+        category_orders={"grade_level": sorted(assessment_merged['grade_level'].unique())}
+    )
+    fig_box.update_layout(title=f"Assessment Scores by Grade & School, Split by {col_split}")
+    fig_box.show()
+```
+
+## Correlation Analysis {#correlation-analysis}
+```{python}
+#| label: Correlation between attendance and assessment scores
+# Encode EL and Special Ed flags for correlation
+assessment_merged['ell_flag'] = assessment_merged['ell_status'].apply(lambda x: 1 if x=='Yes' else 0)
+assessment_merged['sped_flag'] = assessment_merged['special_ed_flag'].apply(lambda x: 1 if x=='Yes' else 0)
+
+corr_df = assessment_merged[['score','ell_flag','sped_flag','grade_level']]
+corr_df['grade_level'] = pd.to_numeric(corr_df['grade_level'])
+corr = corr_df.corr()
+
+fig_corr = px.imshow(
+    corr,
+    text_auto=True,
+    color_continuous_scale='RdYlGn',
+    title="Correlation Heatmap: Score, EL, Special Ed, Grade"
+)
+fig_corr.show()
+```
