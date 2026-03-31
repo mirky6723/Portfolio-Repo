@@ -1,34 +1,51 @@
 ---
 title: "Student Dashboard"
-subtitle: "Data Insights from Supabase"
+subtitle: "Integrated Python + R Analytics (Supabase)"
 author: "Miranda Insights LLC"
-date: "'March 30th, 2026'"
+date: last-modified
 format: 
   html:
-    self-contained: true
+    embed-resources: true
     toc: true
     toc-location: left
-    number-sections: true
     theme: cosmo
+    code-fold: true
+    code-summary: "View Code"
 execute:
-  echo: true
+  echo: false
   warning: false
-  error: true
-jupyter: python3
+  message: false
 ---
+
+> **Portfolio Note:** This report demonstrates a polyglot data workflow. I utilized **Python** for its robust API ecosystem to interface with Supabase and perform complex data merging. I then leveraged **R** and the `reticulate` library to generate publication-quality tables and statistical visualizations, showcasing the ability to choose the best tool for each stage of the data lifecycle.
+
+```{r setup, include=FALSE}
+#| label: load-bridge
+# This R chunk loads the bridge between Python and R
+library(reticulate)
+library(tidyverse)
+library(gt)
+library(patchwork)
+```
 
 ```{python, include=FALSE, echo=FALSE}
 # ─── IMPORT REQUIRED PACKAGES ──────────────────────────────
+#| label: python-extraction
+# ─── DATA ENGINEERING (PYTHON) ──────────────────────────────
 import pandas as pd
 import numpy as np
-import plotly.express as px
-import plotly.graph_objects as go
 
-# Load your main.py data
+# Mocking the import for demonstration - keep your 'from main import...' line
 from main import students_df, attendance_df, assessments_df, schools_df
 
-print("✅ Data Loaded from Supabase")
-print(f"Students: {students_df.shape}, Attendance: {attendance_df.shape}, Assessments: {assessments_df.shape}, Schools: {schools_df.shape}")
+# Merge logic (Efficient in Python/Pandas)
+assessment_merged = assessments_df.merge(students_df, on='student_id', how='left')
+assessment_merged = assessment_merged.merge(schools_df, on='school_id', how='left')
+
+assessment_merged['EL_flag'] = assessment_merged['ell_status'].str.lower().map({'yes': 'EL', 'no': 'Non-EL'})
+assessment_merged['SPED_flag'] = assessment_merged['special_ed_flag'].str.lower().map({'yes': 'SPED', 'no': 'Non-SPED'})
+
+print("✅ Data Loaded and Merged")
 ```
 
 -   [Overview](#overview)
@@ -36,141 +53,147 @@ print(f"Students: {students_df.shape}, Attendance: {attendance_df.shape}, Assess
 -   [Attendance Analysis](#attendance-analysis)
 -   [Assessment Analysis](#assessment-analysis)
 -   [School Comparison](#school-comparison)
--   [Interactive Box Plots](#interactive-box-plots)
+-   [Interactive Tools](#interactive-tools)
 -   [Correlation Analysis](#correlation-analysis)
 
 ## Overview {#overview}
 
-```{python}
-#| label: Quick summary of student data
-# Summary of student data
-students_summary = students_df.describe(include='all').transpose()
-display(students_summary)
+```{r}
+#| label: overview-table
+library(reticulate)
+library(tidyverse)
+library(gt)
 
-# Unique counts
-print(f"Unique Schools: {students_df['school_id'].nunique()}")
-print(f"Total Students: {len(students_df)}")
-print(f"Grades: {students_df['grade_level'].unique()}")
+students <- py$students_df
+assessments <- py$assessments_df
+
+total_students <- nrow(students)
+avg_score <- mean(assessments$score)
+ell_pct <- mean(students$ell_status == "Yes") * 100
+sped_pct <- mean(students$special_ed_flag == "Yes") * 100
+
+tibble(
+  Metric = c("Total Students","Average Score","% EL","% SPED"),
+  Value = c(total_students, round(avg_score,1), paste0(round(ell_pct,1),"%"), paste0(round(sped_pct,1),"%"))
+) %>%
+  gt() %>%
+  tab_header(title = "Key Metrics") %>%
+  cols_align("center") %>%
+  tab_style(
+    style = cell_text(weight = "bold", size = px(18)),
+    locations = cells_body(columns = Value)
+  )
 ```
 
 ## Student Distribution {#student-distribution}
-```{python}
+```{r}
 #| label: Student distribution by grade
 # Student count by grade and gender
-grade_counts = students_df.groupby('grade_level').size().reset_index(name='count')
-fig_grade = px.bar(
-    grade_counts,
-    x='grade_level',
-    y='count',
-    title="Student Distribution by Grade",
-    labels={'count':'Number of Students', 'grade_level':'Grade'},
-    text='count'
-)
-fig_grade.show()
+py$students_df %>%
+  count(grade_level) %>%
+  ggplot(aes(x=factor(grade_level), y=n)) +
+  geom_col(fill="#2C7FB8") +
+  labs(title="Student Distribution by Grade", x="Grade", y="Count") +
+  theme_minimal()
 
 ```
 
 ## Attendance Analysis {#attendance-analysis}
-```{python}
-#| label: Attendance analysis by grade
-# Merge students with attendance data
-attendance_merged = attendance_df.merge(students_df, on='student_id', how='left')
-attendance_merged['absent_flag'] = attendance_merged['status'].apply(lambda x: 1 if x.lower()=='absent' else 0)
-attendance_merged['tardy_flag'] = attendance_merged['status'].apply(lambda x: 1 if x.lower()=='tardy' else 0)
-
-attendance_summary = attendance_merged.groupby(['grade_level','school_id']).agg(
-    total_absent=('absent_flag','sum'),
-    total_tardy=('tardy_flag','sum'),
-    total_days=('status','count')
-).reset_index()
-attendance_summary = attendance_summary.merge(schools_df, on='school_id', how='left')
-
-fig_attendance = go.Figure()
-for school in attendance_summary['school_name'].unique():
-    df_school = attendance_summary[attendance_summary['school_name']==school]
-    fig_attendance.add_trace(go.Bar(x=df_school['grade_level'], y=df_school['total_absent'], name=f'{school} Absent'))
-    fig_attendance.add_trace(go.Bar(x=df_school['grade_level'], y=df_school['total_tardy'], name=f'{school} Tardy'))
-
-fig_attendance.update_layout(
-    title="Attendance Summary by Grade & School",
-    barmode='group', xaxis_title='Grade', yaxis_title='Days'
-)
-fig_attendance.show()
+```{r}
+#| label: attendance-viz
+#| echo: false
+# Process the python attendance dataframe in R
+py$attendance_df %>%
+  left_join(py$students_df, by="student_id") %>%
+  count(grade_level, status) %>%
+  ggplot(aes(x=factor(grade_level), y=n, fill=status)) +
+  geom_col(position="dodge") +
+  scale_fill_manual(values=c("Absent"="#d73027","Tardy"="#fc8d59","Present"="#1a9850")) +
+  labs(title="Attendance by Grade", x="Grade", y="Days") +
+  theme_minimal()
 
 ```
 
 
 ## Assessment Analysis {#assessment-analysis}
-```{python}
-#| label: Assessment analysis by grade and subject
-# Merge assessments + students
-assessment_merged = assessments_df.merge(students_df, on='student_id', how='left')
+### EL vs Non-EL
+```{r}
+#| label: assessment-boxplots
+ggplot(py$assessment_merged, aes(x=factor(grade_level), y=score, fill=EL_flag)) +
+  geom_boxplot() +
+  facet_wrap(~subject) +
+  scale_fill_manual(values=c("EL"="#d73027","Non-EL"="#1a9850")) +
+  labs(title="Score Distribution (EL vs Non-EL)", x="Grade", y="Score") +
+  theme_minimal()
+```
 
-# Average scores by grade and subject
-assessment_summary = assessment_merged.groupby(['grade_level','subject'])['score'].mean().reset_index()
-
-fig_scores = px.bar(
-    assessment_summary,
-    x='grade_level',
-    y='score',
-    color='subject',∏
-    barmode='group',
-    title="Average Assessment Scores by Grade and Subject",
-    labels={'grade_level':'Grade', 'score':'Average Score'}
-)
-fig_scores.show()
+### SPED vs Non-SPED
+```{r}
+  ggplot(py$assessment_merged, aes(x=factor(grade_level), y=score, fill=SPED_flag)) +
+  geom_boxplot() +
+  facet_wrap(~subject) +
+  scale_fill_manual(values=c("SPED"="#756bb1","Non-SPED"="#31a354")) +
+  labs(title="Score Distribution (SPED vs Non-SPED)", x="Grade", y="Score") +
+  theme_minimal()
 ```
 
 ## School Comparison {#school-comparison}
 ```{python}
 #| label: Average assessment scores by school
 # Merge assessments with school info
-school_summary = assessment_merged.groupby('school_name')['score'].mean().reset_index()
-fig_school = px.bar(
-    school_summary,
-    x='school_name',
-    y='score',
-    title="Average Assessment Score by School",
-    labels={'score':'Average Score', 'school_name':'School'}
-)
-fig_school.update_layout(xaxis_tickangle=-45)
-fig_school.show()
+bins = [0,50,60,70,80,90,100]
+labels = ['0-50','51-60','61-70','71-80','81-90','91-100']
+
+assessment_merged['score_bin'] = pd.cut(assessment_merged['score'], bins=bins, labels=labels)
+
+school_bins = assessment_merged.groupby(['school_name','score_bin']).size().reset_index(name='count')
 ```
 
-## Interactive Box Plots {#interactive-box-plots}
-```{python}
-for col_split in ['ell_status', 'special_ed_flag']:
-    fig_box = px.box(
-        assessment_merged,
-        x='grade_level',
-        y='score',
-        color='score',
-        color_continuous_scale='RdYlGn',
-        facet_col='school_name',
-        points='all',
-        hover_data=['student_id','subject',col_split],
-        category_orders={"grade_level": sorted(assessment_merged['grade_level'].unique())}
-    )
-    fig_box.update_layout(title=f"Assessment Scores by Grade & School, Split by {col_split}")
-    fig_box.show()
+```{r}
+ggplot(py$school_bins, aes(x=school_name, y=count, fill=score_bin)) +
+  geom_col() +
+  labs(title="Score Distribution by School", x="School", y="Students") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle=45, hjust=1))
 ```
 
 ## Correlation Analysis {#correlation-analysis}
 ```{python}
-#| label: Correlation between attendance and assessment scores
-# Encode EL and Special Ed flags for correlation
-assessment_merged['ell_flag'] = assessment_merged['ell_status'].apply(lambda x: 1 if x=='Yes' else 0)
-assessment_merged['sped_flag'] = assessment_merged['special_ed_flag'].apply(lambda x: 1 if x=='Yes' else 0)
+#| label: python-correlation
+#| echo: true
+# Demonstrating Python's strength in matrix manipulation
+# Encode categorical → numeric
+corr_df = assessment_merged.copy()
 
-corr_df = assessment_merged[['score','ell_flag','sped_flag','grade_level']]
-corr_df['grade_level'] = pd.to_numeric(corr_df['grade_level'])
-corr = corr_df.corr()
+corr_df['EL_num'] = corr_df['EL_flag'].map({'EL':1,'Non-EL':0})
+corr_df['SPED_num'] = corr_df['SPED_flag'].map({'SPED':1,'Non-SPED':0})
 
-fig_corr = px.imshow(
-    corr,
-    text_auto=True,
-    color_continuous_scale='RdYlGn',
-    title="Correlation Heatmap: Score, EL, Special Ed, Grade"
-)
-fig_corr.show()
+pivot_scores = corr_df.pivot_table(index='student_id', columns='subject', values='score')
+
+final_corr = pivot_scores.copy()
+final_corr['EL'] = corr_df.groupby('student_id')['EL_num'].first()
+final_corr['SPED'] = corr_df.groupby('student_id')['SPED_num'].first()
+final_corr['Grade'] = corr_df.groupby('student_id')['grade_level'].first()
+
+corr_matrix = final_corr.corr()
+```
+
+
+```{r}
+#| label: r-heatmap
+# Visualizing the Python matrix using R's aesthetaic control
+library(corrplot)
+
+# Convert the Python object to an R Matrix explicitly
+m <- as.matrix(py$corr_matrix)
+
+corrplot(m,
+         method = "color",
+         addCoef.col = "black",
+         tl.col = "black",
+         number.cex = 0.7,
+         # Add a little top margin so the title doesn't get cut off
+         mar = c(0, 0, 2, 0), 
+         title = "Correlation Matrix: Scores, EL, SPED, Grade")
+
 ```
