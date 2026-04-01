@@ -1,7 +1,7 @@
 ---
 title: "Student Dashboard"
 subtitle: "Integrated Python + R Analytics (Supabase)"
-author: "Miranda Insights LLC"
+author: "Kyle Miranda"
 date: last-modified
 format: 
   html:

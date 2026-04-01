@@ -2,8 +2,10 @@ from supabase import create_client
 import pandas as pd
 
 # 🔑 Supabase credentials
-url = "https://hfaosealdyzmgbkpohnh.supabase.co"
-anon_key = "sb_publishable_PR1-nkU7_ux4kQ7TlEFm3Q_gAFIvM6B"  # Use anon key for authentication demo
+import os
+
+url = os.getenv("SUPABASE_URL")
+anon_key = os.getenv("SUPABASE_KEY")
 
 # Connect to Supabase
 supabase = create_client(url, anon_key)
