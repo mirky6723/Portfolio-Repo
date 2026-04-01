@@ -19,7 +19,7 @@ execute:
 
 > **Portfolio Note:** This report demonstrates a polyglot data workflow. I utilized **Python** for its robust API ecosystem to interface with Supabase and perform complex data merging. I then leveraged **R** and the `reticulate` library to generate publication-quality tables and statistical visualizations, showcasing the ability to choose the best tool for each stage of the data lifecycle.
 
-```{r setup, include=FALSE}
+```{r include=FALSE}
 #| label: load-bridge
 # This R chunk loads the bridge between Python and R
 library(reticulate)
@@ -28,17 +28,26 @@ library(gt)
 library(patchwork)
 ```
 
-```{python, include=FALSE, echo=FALSE}
+```{python, include=FALSE}
 # ─── IMPORT REQUIRED PACKAGES ──────────────────────────────
 #| label: python-extraction
 # ─── DATA ENGINEERING (PYTHON) ──────────────────────────────
+import os
+from dotenv import load_dotenv
 import pandas as pd
 import numpy as np
 
-# Mocking the import for demonstration - keep your 'from main import...' line
+# ✅ Load environment variables from .env
+load_dotenv()
+
+# Optional: debug check (you can remove later)
+if not os.getenv("SUPABASE_URL"):
+    raise ValueError("SUPABASE_URL not found. Check your .env file.")
+
+# Now import your pipeline
 from main import students_df, attendance_df, assessments_df, schools_df
 
-# Merge logic (Efficient in Python/Pandas)
+# Merge logic
 assessment_merged = assessments_df.merge(students_df, on='student_id', how='left')
 assessment_merged = assessment_merged.merge(schools_df, on='school_id', how='left')
 
